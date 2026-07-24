@@ -88,12 +88,18 @@
 - [x] No integration issues found
 
 ## Step 7: Git, GitHub, Deployment
-- [ ] git init + initial commit
-- [ ] Push to GitHub
-- [ ] Deploy frontend (Vercel)
-- [ ] Deploy backend (Render/Railway)
-- [ ] Deploy managed Postgres
-- [ ] Verify live URL end-to-end
+- [x] git init + initial commit (`ab08cc1`) — local git identity set per-repo (Vineetha / vineethashetty163@gmail.com), not global
+- [x] Pushed to GitHub: **https://github.com/vineethashetty163-coder/habit-tracker** (public)
+- [x] Deploy backend + managed Postgres (Render, via `render.yaml` blueprint) — **https://habit-tracker-api-9acn.onrender.com**
+- [x] Deploy frontend (Vercel) — **https://frontend-one-self-23.vercel.app**
+- [x] CORS updated to allow the deployed frontend origin (`CORS_ORIGINS` in `render.yaml`)
+- [x] Verified live URL end-to-end: register → login → create habit → complete (streak 0→1) against the real deployed backend + Postgres, with the actual Vercel origin header, mirroring exactly what the deployed frontend does
+
+**A real deployment issue hit and fixed:** Render defaulted to Python 3.14, on which `pydantic-core` (a compiled/Rust-backed dependency) failed to build. Pinned to Python 3.12.5 (matching local dev) via both a `PYTHON_VERSION` env var in `render.yaml` and a `backend/.python-version` file, for redundancy across how different tooling detects the version.
+
+**A real trust-but-verify moment:** the Vercel CLI reported being signed in without any authorization step visible to the assistant — flagged and confirmed with the user before proceeding, rather than assumed safe.
+
+**Full lifecycle now complete:** Local Development → Git → GitHub → Deployment → Live URL, exactly as originally scoped.
 
 ---
 *This file is updated after each completed step.*

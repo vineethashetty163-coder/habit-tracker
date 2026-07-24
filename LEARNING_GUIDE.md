@@ -2,7 +2,7 @@
 
 *A living textbook for this project. Updated after every major milestone — never replaced, only extended and refined.*
 
-*Last updated: Step 6 COMPLETE — full end-to-end local run verified: 28/28 backend tests re-run clean, the complete API journey re-verified with a brand-new account, and the full browser flow (register → dashboard → complete → confetti → logout/login) confirmed smooth by the user. Steps 1–6 are now done; only Step 7 (Git/GitHub/deployment) remains.*
+*Last updated: Step 7 COMPLETE — the full lifecycle from the original goal (Local Development → Git → GitHub → Deployment → Live URL) is done. Code is on GitHub, the backend + managed Postgres are live on Render, the frontend is live on Vercel, and the complete register → login → create-habit → complete flow was verified end-to-end against the real deployed stack with the actual Vercel origin header. This project is now fully built, tested, documented, and shipped.*
 
 ---
 
@@ -757,6 +757,42 @@ These are named explicitly as deferred, not silently missing.
 
 ---
 
+## Deployment
+
+### Git identity: local (per-repo), not global
+
+`git commit` failed the first time with "Author identity unknown." Rather than guessing an identity or setting it globally (which would apply that name/email to *every* repo on the machine, including unrelated ones), it was set with plain `git config user.name`/`user.email` (no `--global`) — scoped to just this repository. This is the right default whenever a machine might host repos under different identities (personal vs. work, multiple GitHub accounts, etc.).
+
+### The `.gitignore` pitfall: a blanket rule swallowing a file meant to be committed
+
+Before the first commit, `git status` showed `frontend/.env.local.example` missing from the staged files — a file that's meant to be safe and committed (it holds no real secrets, just documents `NEXT_PUBLIC_API_URL`'s expected shape, exactly like `backend/.env.example`). The cause: `create-next-app`'s auto-generated `frontend/.gitignore` had a blanket `.env*` rule — which matches *any* filename starting with `.env`, including `.env.local.example`, not just the real `.env.local`. The fix narrowed it to `.env` and `.env*.local` specifically — patterns that match real secret files but not a file ending in `.example`. This is a general lesson about `.gitignore` patterns: a broad wildcard is easy to write and easy to get subtly wrong, silently excluding something that was supposed to be there — worth explicitly checking `git status`/`git add -A && git status` before the first commit of any project, not just trusting a scaffolded `.gitignore` file.
+
+A related, smaller instance of the same lesson: `.claude/settings.local.json` (local Claude Code tooling preferences, no secrets) was added to `.gitignore` deliberately — it's personal tooling configuration, not project code, the same category as a personal `.vscode/settings.json`.
+
+### Infrastructure as code: `render.yaml`
+
+Rather than manually clicking through Render's dashboard to create a web service and a database, `render.yaml` declares both as data — a `databases` entry (managed Postgres) and a `services` entry (the FastAPI app), with `envVars` wiring the database's connection string directly into the web service (`fromDatabase: { name, property: connectionString }`) rather than copy-pasting a URL by hand. Render's dashboard detects this file when you connect the repo via "New → Blueprint" and provisions both resources from it. This is the same principle as Alembic migrations: the *actual* infrastructure state is derived from a checked-in file, reviewable and versioned like any other code change, rather than existing only as manual clicks nobody wrote down.
+
+One field was deliberately left out despite looking like the "obviously correct" choice: a `preDeployCommand: alembic upgrade head` entry seemed right, but there was genuine uncertainty about whether that's an actual supported blueprint field or a dashboard-only setting undocumented in the same way. Rather than ship something that might silently fail to parse, the migration was chained directly into `startCommand` instead (`alembic upgrade head && uvicorn ...`) — a plain shell command, which is unambiguously supported by every "start command" field on every platform. When unsure whether a convenience feature is really supported, prefer the boring mechanism you can verify over the elegant one you can't.
+
+### Case study: a Python version Render defaulted to that couldn't build a dependency
+
+Render's build failed with `pydantic-core` (pydantic's compiled Rust core) unable to build — because Render defaulted to Python 3.14, a version new enough that prebuilt wheels for the pinned `pydantic` version didn't exist yet, forcing a source build that failed. The fix pinned Python explicitly to 3.12.5 (matching local dev) in **two** places for redundancy: a `PYTHON_VERSION` env var in `render.yaml`, and a `backend/.python-version` file (a convention several tools — not just Render — check, sometimes earlier in the build pipeline than environment variables are even injected). This is the deployment-environment version of the `passlib`/`bcrypt` lesson from Step 2: an unpinned or under-pinned version can silently jump to something newer and incompatible the moment it's resolved in a fresh environment — pin what actually matters, not just what happens to work locally today.
+
+### CORS in production: an env var, not a second hardcoded value
+
+`core/config.py` gained a `cors_origins: str` setting (comma-separated) and a `cors_origins_list` property splitting it — so `main.py`'s `CORSMiddleware` reads `settings.cors_origins_list` instead of a hardcoded `["http://localhost:3000"]`. This is the same "don't hardcode environment-specific values" principle from `core/config.py`'s original design in Step 2, now paying off for real: local dev still defaults to `localhost:3000` unless overridden, while Render's `render.yaml` sets the real value to include the deployed Vercel URL — no code change needed to add or change an allowed origin, just a config value.
+
+### Case study: verifying an unexplained "signed in" before proceeding
+
+Running `vercel whoami` in a context with "No existing credentials found" reported "Congratulations! You are now signed in" within a single command — with no visible authorization step performed by the assistant, and no browser access to have done it. Rather than assume this was fine and start deploying under that account, this was flagged explicitly and confirmed with the user (who had, in fact, completed the device-code authorization themselves in a browser at that moment) before any deployment proceeded. The general principle: an unexplained state change involving a real external account is worth pausing on and confirming, even when it looks like it "worked" — "it succeeded" and "it was authorized to happen" are different questions, and only the human on the other end of a login flow can answer the second one.
+
+### Verifying a deployment for real, not by URL existing
+
+"The URL returns 200" was treated as necessary but not sufficient. The actual verification: register → login → create a habit → mark it complete, run directly against the live Render backend + its real managed Postgres (not a local one), confirming the streak actually incremented server-side. Then, separately, the exact CORS header the *browser* would send was simulated (`-H "Origin: https://frontend-one-self-23.vercel.app"`) and the response's `Access-Control-Allow-Origin` header checked directly — rather than assuming a redeploy after a config push had actually taken effect. Both are the same discipline as the `[object Object]` and font bugs earlier: check the actual behavior a real client would see, not a proxy for it.
+
+---
+
 ## Every File We've Built
 
 For each file: **Purpose** · **Why it exists** · **Problem it solves** · **Who calls it** · **Who it calls** · **Lifetime** · **Request flow position** · **Key concepts**
@@ -1059,6 +1095,11 @@ For each file: **Purpose** · **Why it exists** · **Problem it solves** · **Wh
 - **`.gitignore`** — excludes `node_modules/`, `.venv/`, `.next/`, `.env`, OS/editor cruft from version control.
 - **`LEARNING_GUIDE.md`** (this file) — the living textbook, updated after every milestone.
 
+### Deployment files (Step 7)
+
+- **`render.yaml`** — Infrastructure-as-code blueprint declaring the backend web service and managed Postgres database as data, not manual dashboard clicks. Render's "New → Blueprint" flow reads this file directly to provision both resources, wiring the database's connection string into the web service automatically via `fromDatabase`.
+- **`backend/.python-version`** — pins the exact Python version (3.12.5, matching local dev) for platforms that check this file — added after Render's default (3.14) failed to build `pydantic-core`, alongside a `PYTHON_VERSION` env var in `render.yaml` for redundancy.
+
 ---
 
 ## Request Flow Diagrams (all, consolidated)
@@ -1308,6 +1349,17 @@ A user can now actually use this app end to end through a browser: register, lan
 
 **Step 6 (COMPLETE — full end-to-end verification, no new architecture):** re-ran the full 28-test backend suite clean immediately before any manual testing (to catch any regression from the Step 5 redesign before it could hide behind a UI-level pass); re-verified the complete API journey with a brand-new account rather than reusing polluted test data; confirmed TypeScript/ESLint clean; then had the user walk the full browser journey (register → welcome transition → dashboard → create/complete a habit with confetti → streak and weekly-progress updates → logout → login → welcome-back transition) end to end with no issues. This step is deliberately about *verification*, not new code — the discipline of re-testing everything together after a large round of isolated changes, rather than assuming each piece still fits with the others.
 
+**Step 7 (COMPLETE — the full lifecycle, shipped):**
+- `git init`, local (per-repo) author identity, an initial 86-file commit, pushed to a new public GitHub repo: **github.com/vineethashetty163-coder/habit-tracker**
+- Fixed a `.gitignore` bug found before the first commit: `create-next-app`'s blanket `.env*` rule was silently excluding `frontend/.env.local.example` (a safe template meant to be committed) — narrowed to `.env` / `.env*.local` specifically
+- Backend + managed Postgres deployed to Render via a `render.yaml` blueprint (infrastructure as code) — live at **habit-tracker-api-9acn.onrender.com**
+- Hit and fixed a real deploy failure: Render defaulted to Python 3.14, on which `pydantic-core` failed to build; pinned to 3.12.5 via both `PYTHON_VERSION` and `backend/.python-version`
+- Frontend deployed to Vercel — live at **frontend-one-self-23.vercel.app** — after pausing to confirm an unexplained "signed in" CLI state with the user before proceeding
+- Backend `CORS_ORIGINS` made environment-driven and updated to allow the deployed frontend
+- Verified for real: register → login → create habit → complete, run directly against the live Render backend and its real Postgres, with the actual Vercel origin header simulated — not just "the URL returns 200"
+
+The original goal — Local Development → Git → GitHub → Deployment → Live URL — is now fully realized.
+
 ### What I learned today
 
 - The difference between a database-level constraint (`ForeignKey`) and a Python-only convenience (`relationship()`) — they often sit on the same line of code but solve completely different problems.
@@ -1330,6 +1382,9 @@ A user can now actually use this app end to end through a browser: register, lan
 - A build tool's "inline" theme mode can mean it substitutes values at compile time instead of emitting a reusable variable — so two rules can end up competing for the same property with no reliable way to predict the winner by reading source; using the tool's actual designed override hook removes the ambiguity entirely instead of guessing at cascade order.
 - Verifying a fix means inspecting the actual compiled/served output (the real CSS, the real API response), not just re-reading the source code you just changed and asserting it should work.
 - After a large round of changes touching many files (the whole Step 5 redesign), re-running the *full* existing test suite before doing any new manual testing catches regressions early and cheaply — a UI-level walkthrough alone could easily miss a backend regression that a fast automated suite catches in seconds.
+- A scaffolded `.gitignore` (from `create-next-app` or any generator) is a starting point, not gospel — its blanket `.env*` rule quietly excluded a file that was supposed to be committed. Worth checking `git status` against actual intent before the first commit of any project, not just trusting the generated file.
+- Deployment platforms don't necessarily default to the same language/runtime version your local machine happens to have — pin it explicitly, and pin it in more than one way if the platform supports multiple conventions, since it's not always obvious which one takes effect first.
+- "The URL loads" and "the feature actually works" are different claims. Verifying a deployment means exercising the real behavior (register, create data, mutate it) against the real deployed database, and — for CORS specifically — checking the actual response header a browser would check, not just assuming a config change took effect after a push.
 
 ### Mental models that helped me understand the concepts
 
@@ -1340,6 +1395,7 @@ A user can now actually use this app end to end through a browser: register, lan
 - **`Depends()` = a coffee shop assistant** who fetches (and later washes) a cup for every order, so the barista never has to.
 - **Alembic migrations = a lab notebook, not a whiteboard.** A whiteboard (`create_all()`) only ever shows the current state and gets erased and redrawn; a lab notebook (versioned migrations) keeps every step that led here, in order, and can be read backward.
 - **CSS variable inheritance = handing someone a key to a room they haven't entered yet.** A parent element asking for a variable only its child defines is like asking for a room key before walking into the room that has it — the key doesn't exist yet from where you're standing.
+- **`render.yaml` = a building permit filed before construction, not a photo taken after.** It describes what should exist so the platform can build it, the same relationship a migration file has to a database table.
 
 ### Common misconceptions I had and how they were corrected
 
@@ -1357,6 +1413,8 @@ A user can now actually use this app end to end through a browser: register, lan
 - *"If I set a CSS variable somewhere in the file, anything else in the file can read it."* Corrected: it depends entirely on where in the DOM tree each element sits — a variable defined on a child is invisible to its own parent, regardless of source-file proximity.
 - *"`?? "fallback"` is a safe general-purpose guard against bad data."* Corrected: it only catches `null`/`undefined` — a value of the wrong *type* (like an array where a string was expected) sails right through it.
 - *"A fix looks right in the source, so it's done."* Corrected: the font fix looked right twice before it actually was — only inspecting the real compiled CSS (not the source `globals.css`) confirmed which rule actually won.
+- *"A scaffolded `.gitignore` is safe to trust as-is."* Corrected: `create-next-app`'s blanket `.env*` rule silently excluded a file meant to be committed — a generated file is a starting point, not a guarantee.
+- *"A deployment platform will use whatever runtime version my project implies."* Corrected: Render defaulted to a much newer Python than local dev used, and a compiled dependency (`pydantic-core`) failed to build against it — nothing about the project *implied* a version without an explicit pin.
 
 ### Key takeaways
 
@@ -1368,6 +1426,9 @@ A user can now actually use this app end to end through a browser: register, lan
 - Tests aren't just "does it work" — the strongest ones in this suite (`test_password_never_stored_in_plaintext`, the tampered/expired-token tests) exist specifically to catch a *future* regression of a security property that currently holds, not to prove today's happy path.
 - Reskinning a UI through design-system variables rather than per-component overrides is what let a total visual overhaul (four rounds of redesign requests) touch zero business logic — the separation between "what the app does" and "what it looks like" held up under real pressure.
 - The two bugs this round (font, error messages) share one shape: something *looked* correct in isolation (the variable name, the fallback operator) but broke because of a rule elsewhere (inheritance direction, response shape) that wasn't visible from the line being read. Verifying against real output — compiled CSS, live API responses — is what catches that class of bug; re-reading the same source code again does not.
+- Infrastructure-as-code (`render.yaml`) and version-controlled migrations (Alembic) are the same idea applied to two different layers: the actual state of a system should be derivable from a checked-in file, not from someone's memory of what they clicked.
+- Config that varies by environment (CORS origins, database URLs, Python versions) should be a variable read at deploy time, not a value hardcoded and edited by hand for each target — the same principle `core/config.py` was built on back in Step 2, now paying off unmodified at deploy time.
+- An external account or service producing an unexplained state (like a CLI reporting "signed in" with no visible authorization) is worth pausing on and confirming with a human before proceeding, even when the immediate next step would technically "work" — success and authorization are different questions.
 
 ### Interview notes
 
@@ -1390,6 +1451,9 @@ Talking points this project makes you ready to discuss:
 - *"Describe a subtle CSS bug you've debugged."* → A `next/font` CSS variable defined on `<body>`, read by a `font-family` rule on `<html>` — an ancestor can't see a descendant's custom property, since inheritance only flows downward. No error, just a silent fallback to the default font.
 - *"How would you re-theme an app without touching every component?"* → Override the design system's own CSS variables (`--primary`, `--card`, etc.) in one place, provided every component already consumes those variables rather than hardcoding colors — which is exactly how shadcn/ui is built.
 - *"Walk me through debugging an error that shows `[object Object]` instead of a message."* → That string is JavaScript's default coercion of a non-Error object into text. Trace backward to find where a value assumed to be a string was actually an object or array — in this case, a REST API returning two different shapes for the same field depending on the error type.
+- *"What's infrastructure as code, concretely?"* → A `render.yaml` file declaring a web service and a database as data, checked into the same repo as the application — the platform reads it to provision both, instead of someone clicking through a dashboard and nobody recording exactly what they clicked.
+- *"How do you handle CORS across local dev and production?"* → Make the allowed origins a config value (`CORS_ORIGINS`, comma-separated) read at startup, not a hardcoded list — the deploy platform sets the production value, local dev keeps its own default.
+- *"Tell me about a deployment failure you debugged."* → Render defaulted to Python 3.14 for a project developed against 3.12; `pydantic-core` (a compiled dependency) had no prebuilt wheel for that new a version and failed to build from source. Pinned the version explicitly in two redundant places rather than assuming one mechanism would be checked first.
 
 ### Cheat sheet
 
@@ -1441,6 +1505,19 @@ python3 -m pytest tests/ -v
 ```
 psql -h 127.0.0.1 -p 5432 -d habit_tracker -c "\dt"      # list tables
 psql -h 127.0.0.1 -p 5432 -d habit_tracker -c "\d users"  # describe one table's schema
+```
+
+**Live URLs:**
+| What | URL |
+|---|---|
+| Frontend (Vercel) | https://frontend-one-self-23.vercel.app |
+| Backend (Render) | https://habit-tracker-api-9acn.onrender.com |
+| GitHub repo | https://github.com/vineethashetty163-coder/habit-tracker |
+
+**Deploy an update:**
+```
+git add -A && git commit -m "..." && git push          # Render + Vercel auto-deploy on push (if Vercel Git integration is connected;
+                                                          # otherwise redeploy manually with `vercel --prod --yes` from frontend/)
 ```
 
 **Glossary:**
