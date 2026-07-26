@@ -10,7 +10,6 @@ import { EmptyState } from "@/components/habits/empty-state";
 import { HabitCard } from "@/components/habits/habit-card";
 import { HabitFormDialog } from "@/components/habits/habit-form-dialog";
 import { StatCard } from "@/components/habits/stat-card";
-import { WeeklyProgress } from "@/components/habits/weekly-progress";
 import { RequireAuth } from "@/components/require-auth";
 import { ThemeToggle } from "@/components/theme-toggle";
 import { useAuth } from "@/contexts/AuthContext";
@@ -99,44 +98,40 @@ function DashboardContent() {
         ) : (
           <div className="space-y-8">
             {stats && (
-              <>
-                <div className="grid grid-cols-2 gap-4 sm:grid-cols-4">
-                  <StatCard
-                    icon={TrendingUp}
-                    value={String(stats.total_completions)}
-                    label="Completions"
-                    sublabel="This week"
-                    colorClassName="bg-pink-100 text-pink-600 dark:bg-pink-950 dark:text-pink-300"
-                    delay={0}
-                  />
-                  <StatCard
-                    icon={Target}
-                    value={`${Math.round(stats.completion_rate * 100)}%`}
-                    label="Completion rate"
-                    sublabel="You've got this"
-                    colorClassName="bg-violet-100 text-violet-600 dark:bg-violet-950 dark:text-violet-300"
-                    delay={0.05}
-                  />
-                  <StatCard
-                    icon={ListChecks}
-                    value={String(habits.length)}
-                    label="Active habits"
-                    sublabel="Keep tracking"
-                    colorClassName="bg-indigo-100 text-indigo-600 dark:bg-indigo-950 dark:text-indigo-300"
-                    delay={0.1}
-                  />
-                  <StatCard
-                    icon={Flame}
-                    value={String(bestStreak)}
-                    label="Best streak"
-                    sublabel="Days in a row"
-                    colorClassName="bg-orange-100 text-orange-600 dark:bg-orange-950 dark:text-orange-300"
-                    delay={0.15}
-                  />
-                </div>
-
-                <WeeklyProgress stats={stats} />
-              </>
+              <div className="grid grid-cols-2 gap-4 sm:grid-cols-4">
+                <StatCard
+                  icon={TrendingUp}
+                  value={String(stats.total_completions)}
+                  label="Completions"
+                  sublabel="This week"
+                  colorClassName="bg-pink-100 text-pink-600 dark:bg-pink-950 dark:text-pink-300"
+                  delay={0}
+                />
+                <StatCard
+                  icon={Target}
+                  value={`${Math.round(stats.completion_rate * 100)}%`}
+                  label="Completion rate"
+                  sublabel="You've got this"
+                  colorClassName="bg-violet-100 text-violet-600 dark:bg-violet-950 dark:text-violet-300"
+                  delay={0.05}
+                />
+                <StatCard
+                  icon={ListChecks}
+                  value={String(habits.length)}
+                  label="Active habits"
+                  sublabel="Keep tracking"
+                  colorClassName="bg-indigo-100 text-indigo-600 dark:bg-indigo-950 dark:text-indigo-300"
+                  delay={0.1}
+                />
+                <StatCard
+                  icon={Flame}
+                  value={String(bestStreak)}
+                  label="Best streak"
+                  sublabel="Days in a row"
+                  colorClassName="bg-orange-100 text-orange-600 dark:bg-orange-950 dark:text-orange-300"
+                  delay={0.15}
+                />
+              </div>
             )}
 
             <div className="flex items-center justify-between">
