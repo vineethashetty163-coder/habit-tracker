@@ -6,7 +6,7 @@ from sqlalchemy.orm import Session
 from app.db.models import Habit, HabitLog, User
 from app.deps import get_current_user, get_db
 from app.schemas.habit import HabitCreate, HabitResponse, HabitUpdate
-from app.services.streaks import calculate_current_streak
+from app.services.streaks import calculate_current_streak, calculate_week_completed_count
 
 router = APIRouter(prefix="/habits", tags=["habits"])
 
@@ -26,6 +26,7 @@ def _to_response(habit: Habit) -> HabitResponse:
         description=habit.description,
         created_at=habit.created_at,
         current_streak=calculate_current_streak(completed_dates),
+        week_completed_count=calculate_week_completed_count(completed_dates),
     )
 
 

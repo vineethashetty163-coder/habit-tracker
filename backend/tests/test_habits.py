@@ -20,6 +20,8 @@ def test_create_and_list_habit(client):
     body = create_response.json()
     assert body["name"] == "Read"
     assert body["current_streak"] == 0
+    assert body["week_completed_count"] == 0
+    assert body["week_goal"] == 7
 
     list_response = client.get("/habits", headers=headers)
     assert list_response.status_code == 200
@@ -94,3 +96,17 @@ def test_streak_reflects_seeded_historical_logs(client, db_session):
 
     response = client.get("/habits", headers=headers)
     assert response.json()[0]["current_streak"] == 3
+    assert response.json()[0]["week_completed_count"] == 3
+
+
+def test_week_completed_count_ignores_completions_older_than_a_week(client, db_session):
+    headers = _register_and_get_headers(client)
+    habit_id = client.post("/habits", json={"name": "Read"}, headers=headers).json()["id"]
+
+    today = date.today()
+    db_session.add(HabitLog(habit_id=habit_id, completed_date=today))
+    db_session.add(HabitLog(habit_id=habit_id, completed_date=today - timedelta(days=10)))
+    db_session.commit()
+
+    response = client.get("/habits", headers=headers)
+    assert response.json()[0]["week_completed_count"] == 1

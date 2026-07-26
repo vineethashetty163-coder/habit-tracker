@@ -19,3 +19,5 @@ class HabitResponse(BaseModel):
     description: str | None
     created_at: datetime
     current_streak: int
+    week_completed_count: int
+    week_goal: int = 7

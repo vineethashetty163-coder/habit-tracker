@@ -73,6 +73,8 @@ export type Habit = {
   description: string | null;
   created_at: string;
   current_streak: number;
+  week_completed_count: number;
+  week_goal: number;
 };
 
 export type WeeklyStats = {
