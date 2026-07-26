@@ -2,7 +2,7 @@
 
 *A living textbook for this project. Updated after every major milestone — never replaced, only extended and refined.*
 
-*Last updated: Step 7 COMPLETE — the full lifecycle from the original goal (Local Development → Git → GitHub → Deployment → Live URL) is done. Code is on GitHub, the backend + managed Postgres are live on Render, the frontend is live on Vercel, and the complete register → login → create-habit → complete flow was verified end-to-end against the real deployed stack with the actual Vercel origin header. This project is now fully built, tested, documented, and shipped.*
+*Last updated: post-launch iteration — added per-habit weekly progress (`week_completed_count`/`week_goal`, no migration needed), then removed the now-redundant dashboard-wide "This week" card once the per-habit view made it obsolete. Both changes deployed and verified live. The full lifecycle (Local Development → Git → GitHub → Deployment → Live URL) from Step 7 remains complete; this is the project continuing to evolve after shipping.*
 
 ---
 
@@ -578,6 +578,26 @@ while cursor <= today:
 Walking the full 7-day range explicitly and using `.get(cursor, 0)` is what turns "days with data" into "every day, defaulting to zero" — a general pattern any time a report needs a fixed calendar range regardless of which days actually have activity.
 
 `completion_rate` is `total_completions / (habit_count * 7)` — the denominator is "how many completions would be possible if every habit were completed every day this week," guarded against division by zero when a user has no habits yet.
+
+### Per-habit weekly progress — a second view at a different granularity
+
+After the dashboard shipped, a real gap surfaced: the only weekly-tracking view was dashboard-wide (`GET /stats/weekly`, aggregated across every habit). It couldn't answer "how consistent have I been with *this specific* habit this week?" — only "was anything completed on day X, across all habits?"
+
+The fix mirrors `calculate_current_streak` exactly — a second pure function in `services/streaks.py`:
+
+```python
+def calculate_week_completed_count(completed_dates: set[date], today: date | None = None) -> int:
+    if today is None:
+        today = date.today()
+    week_dates = {today - timedelta(days=offset) for offset in range(7)}
+    return len(week_dates & completed_dates)
+```
+
+Set intersection (`week_dates & completed_dates`) is the whole algorithm: build the set of the last 7 calendar dates, intersect with the habit's actual completion dates, count what's left. `HabitResponse` gained two fields — `week_completed_count` (computed) and `week_goal` (fixed at `7` for now) — no new database column or migration, since both are derived from data that already exists (`HabitLog`), exactly like `current_streak`.
+
+**Why `week_goal` is returned by the API instead of the frontend just assuming 7:** it keeps the "what counts as a full week" decision on the backend, so if it ever becomes configurable per habit (a real, deferred design option — see the conversation that led here), the frontend doesn't need to change at all; it already reads the goal from the response rather than hardcoding it.
+
+**A UX lesson that came right after:** once the per-habit progress bar existed, the original dashboard-wide day-circle "This week" card became genuinely redundant — it answered a coarser version of a question the habit cards now answered individually, and the 4 stat tiles already covered the numeric weekly summary. It was removed entirely rather than kept "just in case." Adding a more specific view can retire a more general one that used to be the only option — worth revisiting existing UI once new, more granular information becomes available, instead of just accumulating views indefinitely.
 
 ---
 
@@ -1359,6 +1379,8 @@ A user can now actually use this app end to end through a browser: register, lan
 - Verified for real: register → login → create habit → complete, run directly against the live Render backend and its real Postgres, with the actual Vercel origin header simulated — not just "the URL returns 200"
 
 The original goal — Local Development → Git → GitHub → Deployment → Live URL — is now fully realized.
+
+**Post-launch iteration (a real user-reported gap, addressed after shipping):** the user noticed the dashboard only tracked weekly progress in aggregate, with no way to see how a *specific* habit was doing this week. Added `week_completed_count`/`week_goal` to the habit response (mirroring `current_streak`'s pure-function pattern, no migration needed), a progress bar on each habit card, 5 new backend tests (33 total) — then, once that landed, recognized the original dashboard-wide "This week" card was now redundant and removed it rather than leaving two overlapping views. Both changes committed, pushed, and redeployed (Render auto-deploy for the backend; a manual `vercel --prod` for the frontend, since it isn't Git-integrated).
 
 ### What I learned today
 

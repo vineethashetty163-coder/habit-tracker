@@ -101,5 +101,13 @@
 
 **Full lifecycle now complete:** Local Development → Git → GitHub → Deployment → Live URL, exactly as originally scoped.
 
+## Post-launch iteration: per-habit weekly progress
+- [x] Backend: `week_completed_count` + `week_goal` (fixed at 7) added to `HabitResponse`, computed the same way `current_streak` is (pure function, `services/streaks.py`), no migration needed
+- [x] Frontend: progress bar (shadcn `Progress`) + "X/7 this week" label on every habit card
+- [x] 5 new backend tests (33 total), all passing
+- [x] Removed the dashboard-wide day-circle "This week" card — redundant once per-habit progress existed at finer granularity; the 4 stat tiles already cover the numeric weekly summary
+- [x] Deployed: backend via git push (Render auto-deploy), frontend via `vercel --prod --yes` (no Git integration configured, so manual redeploy is required after every frontend change)
+- [x] Verified live: both the new field's presence and the redundant-card removal confirmed against the deployed backend and the stable Vercel URL
+
 ---
 *This file is updated after each completed step.*
